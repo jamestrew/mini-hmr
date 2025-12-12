@@ -34,9 +34,10 @@ eg vite:
 ## The Plan
 
 - [x] throw together some webserver
-- [ ] set up some sort of file watching (will need debounce) and just log it out to the server logs
-- [ ] set up ws connection and basic client code and log file update to console
+- [x] set up some sort of file watching (will need debounce) and just log it out to the server logs
+- [x] set up ws connection and basic client code and log file update to console
 - [ ] some sort of premitive reloading on the client side, fetch the new file and run it?
+    - need to append `?t=<timestamp>` to bypass any caching
 - [ ] need to study client hmr code more for more advanced stuff
 
 
