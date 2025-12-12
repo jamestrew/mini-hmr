@@ -38,6 +38,7 @@ async fn main() {
 
     let app = Router::new()
         .route_service("/", ServeFile::new("assets/index.html"))
+        .route_service("/hmr-client.js", ServeFile::new("hmr-client/dist/index.js"))
         .nest_service("/assets", ServeDir::new("assets/"))
         .route("/ws", get(ws_handler))
         .with_state(tx)
