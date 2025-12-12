@@ -26,11 +26,14 @@ eg vite:
 {"type": "connected"}
 {"type": "ping"}  // just some heartbeat?
 {"type": "update", "updates": [{"type": ..., "path": ..., "timestamp": ...]}
+
+{"type": "full-reload", "triggeredBy": ...}
+{"type": "error", err-info}
 ```
 
 ## The Plan
 
-- [ ] throw together some webserver
+- [x] throw together some webserver
 - [ ] set up some sort of file watching (will need debounce) and just log it out to the server logs
 - [ ] set up ws connection and basic client code and log file update to console
 - [ ] some sort of premitive reloading on the client side, fetch the new file and run it?
