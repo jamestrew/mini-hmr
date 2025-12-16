@@ -5,7 +5,6 @@ export function renderApp() {
   const div = document.createElement("div");
   div.textContent = `Rendered at: ${new Date().toLocaleTimeString()}`;
   root.appendChild(div);
-
 }
 
 renderApp();

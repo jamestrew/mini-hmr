@@ -1,14 +1,5 @@
-use axum::{
-    Router,
-    extract::{
-        ConnectInfo, State, WebSocketUpgrade,
-        ws::{Message, WebSocket},
-    },
-    response::IntoResponse,
-    routing::get,
-};
-use axum_extra::TypedHeader;
-use notify::{RecursiveMode, RecommendedWatcher, event::CreateKind};
+use axum::{Router, routing::get};
+use notify::{RecommendedWatcher, RecursiveMode, event::CreateKind};
 use notify_debouncer_full::{
     DebounceEventHandler, DebouncedEvent, Debouncer, RecommendedCache, new_debouncer,
 };
@@ -19,6 +10,8 @@ use tower_http::{
     trace::{DefaultMakeSpan, TraceLayer},
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+mod ws;
 
 #[tokio::main]
 async fn main() {
@@ -40,7 +33,7 @@ async fn main() {
         .route_service("/", ServeFile::new("assets/index.html"))
         .route_service("/hmr-client.js", ServeFile::new("client/dist/index.js"))
         .nest_service("/assets", ServeDir::new("assets/"))
-        .route("/ws", get(ws_handler))
+        .route("/ws", get(ws::ws_handler))
         .with_state(tx)
         .layer(
             TraceLayer::new_for_http()
@@ -97,49 +90,6 @@ fn watch_files(
     debouncer.watch(path, RecursiveMode::Recursive).unwrap();
     tracing::info!("watching {:?} for changes", path);
     debouncer
-}
-
-#[axum::debug_handler]
-async fn ws_handler(
-    State(tx): State<broadcast::Sender<Vec<DebouncedEvent>>>,
-    ws: WebSocketUpgrade,
-    user_agent: Option<TypedHeader<headers::UserAgent>>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-) -> impl IntoResponse {
-    let user_agent = if let Some(TypedHeader(user_agent)) = user_agent {
-        user_agent.to_string()
-    } else {
-        String::from("Unknown browser")
-    };
-
-    tracing::debug!("`{user_agent}` at {addr} connected.");
-    let rx = tx.subscribe();
-    ws.on_upgrade(move |socket| handle_socket(socket, rx, addr))
-}
-
-async fn handle_socket(
-    mut socket: WebSocket,
-    mut rx: broadcast::Receiver<Vec<DebouncedEvent>>,
-    addr: SocketAddr,
-) {
-    while let Ok(events) = rx.recv().await {
-        for event in &events {
-            if socket
-                .send(Message::Text(
-                    format!(
-                        "File change detected: {:?} at paths: {:?}",
-                        event.kind, event.paths
-                    )
-                    .into(),
-                ))
-                .await
-                .is_err()
-            {
-                tracing::debug!("client at {addr} disconnected");
-                return;
-            };
-        }
-    }
 }
 
 async fn serve(app: Router, port: u16) {
