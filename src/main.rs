@@ -8,8 +8,10 @@ use axum::{
     routing::get,
 };
 use axum_extra::TypedHeader;
-use notify::RecursiveMode;
-use notify_debouncer_full::{DebouncedEvent, new_debouncer};
+use notify::{RecursiveMode, RecommendedWatcher, event::CreateKind};
+use notify_debouncer_full::{
+    DebounceEventHandler, DebouncedEvent, Debouncer, RecommendedCache, new_debouncer,
+};
 use std::{net::SocketAddr, path::Path, time::Duration};
 use tokio::sync::broadcast;
 use tower_http::{
@@ -31,14 +33,12 @@ async fn main() {
 
     let (tx, _rx) = broadcast::channel::<Vec<DebouncedEvent>>(100);
 
-    tokio::task::spawn_blocking({
-        let tx = tx.clone();
-        move || watch_files(Path::new("assets"), tx)
-    });
+    // Hold on to the debouncer guard so the watcher thread keeps running.
+    let _debouncer = watch_files(Path::new("assets"), tx.clone());
 
     let app = Router::new()
         .route_service("/", ServeFile::new("assets/index.html"))
-        .route_service("/hmr-client.js", ServeFile::new("hmr-client/dist/index.js"))
+        .route_service("/hmr-client.js", ServeFile::new("client/dist/index.js"))
         .nest_service("/assets", ServeDir::new("assets/"))
         .route("/ws", get(ws_handler))
         .with_state(tx)
@@ -50,26 +50,53 @@ async fn main() {
     serve(app, 3307).await;
 }
 
-fn watch_files(path: &Path, tx: broadcast::Sender<Vec<DebouncedEvent>>) {
-    let (notify_tx, notify_rx) = std::sync::mpsc::channel();
-    let mut debouncer = new_debouncer(Duration::from_millis(200), None, notify_tx).unwrap();
-    debouncer.watch(path, RecursiveMode::Recursive).unwrap();
+struct Watcher(broadcast::Sender<Vec<DebouncedEvent>>);
 
-    tracing::info!("watching {:?} for changes", path);
+impl Watcher {
+    const EXTENSIONS: [&'static str; 5] = ["html", "css", "js", "ts", "json"];
 
-    for result in notify_rx {
-        match result {
-            Ok(events) => {
-                for event in &events {
-                    tracing::info!(kind = ?event.kind, paths = ?event.paths, "file change");
+    fn new(tx: broadcast::Sender<Vec<DebouncedEvent>>) -> Self {
+        Self(tx)
+    }
+
+    fn filter_valid_ft(&self, event: &DebouncedEvent) -> bool {
+        event.paths.iter().any(|path| {
+            path.extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext_str| Self::EXTENSIONS.contains(&ext_str))
+        })
+    }
+}
+
+impl DebounceEventHandler for Watcher {
+    fn handle_event(&mut self, event: notify_debouncer_full::DebounceEventResult) {
+        for ev in event.unwrap().iter().filter(|ev| self.filter_valid_ft(ev)) {
+            match &ev.kind {
+                notify::EventKind::Create(create_kind) => {
+                    if matches!(create_kind, CreateKind::File) {
+                        tracing::debug!("file created: {:?}", ev.paths);
+                        let _ = self.0.send(vec![ev.clone()]);
+                    }
                 }
-                let _ = tx.send(events);
-            }
-            Err(errors) => {
-                tracing::error!(?errors, "file watch error");
+                notify::EventKind::Modify(_modify_kind) => todo!(),
+                notify::EventKind::Remove(_remove_kind) => {
+                    let _ = self.0.send(vec![ev.clone()]);
+                }
+                _ => {}
             }
         }
     }
+}
+
+fn watch_files(
+    path: &Path,
+    tx: broadcast::Sender<Vec<DebouncedEvent>>,
+) -> Debouncer<RecommendedWatcher, RecommendedCache> {
+    let watcher = Watcher::new(tx);
+    let mut debouncer = new_debouncer(Duration::from_millis(200), None, watcher).unwrap();
+    debouncer.watch(path, RecursiveMode::Recursive).unwrap();
+    tracing::info!("watching {:?} for changes", path);
+    debouncer
 }
 
 #[axum::debug_handler]
