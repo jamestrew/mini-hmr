@@ -10,7 +10,7 @@ use notify_debouncer_full::DebouncedEvent;
 use serde::Serialize;
 use std::{
     net::SocketAddr,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::broadcast;
@@ -75,17 +75,22 @@ async fn handle_socket(
         return;
     }
 
+    let cwd = std::env::current_dir().unwrap_or_default();
+
     while let Ok(events) = rx.recv().await {
         let updates = events
             .iter()
             .flat_map(|event| event.paths.iter())
-            .map(|path| UpdatePayload {
-                type_: match path.extension().and_then(|ext| ext.to_str()) {
-                    Some("css") => UpdateType::CssUpdate,
-                    _ => UpdateType::JsUpdate,
-                },
-                path: path.to_path_buf(),
-                timestamp: now_ms(),
+            .filter_map(|path| {
+                let relative = path.strip_prefix(&cwd).ok()?;
+                Some(UpdatePayload {
+                    type_: match path.extension().and_then(|ext| ext.to_str()) {
+                        Some("css") => UpdateType::CssUpdate,
+                        _ => UpdateType::JsUpdate,
+                    },
+                    path: Path::new("/").join(relative),
+                    timestamp: now_ms(),
+                })
             })
             .collect::<Vec<_>>();
 

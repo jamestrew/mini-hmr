@@ -14,6 +14,7 @@ I'm gonna build my own very simple one just to demystify things for myself.
 ### client
 
 has some sort of client code specifically for the hmr that
+
 - listens on the websocket connection
 - reacts to update messages on the ws, refetches the updated file and does the module updating
 - can hook into things like react-refresh for updating react components without losing state
@@ -22,6 +23,7 @@ has some sort of client code specifically for the hmr that
 
 some protocol from communicating updates from the dev server to the client
 eg vite:
+
 ```
 {"type": "connected"}
 {"type": "ping"}  // just some heartbeat?
@@ -36,91 +38,7 @@ eg vite:
 - [x] throw together some webserver
 - [x] set up some sort of file watching (will need debounce) and just log it out to the server logs
 - [x] set up ws connection and basic client code and log file update to console
-- [ ] clean up fs notifications
-- [ ] some sort of premitive reloading on the client side, fetch the new file and run it?
-    - need to append `?t=<timestamp>` to bypass any caching
+- [x] clean up fs notifications
+- [x] some sort of premitive reloading on the client side, fetch the new file and run it?
+  - need to append `?t=<timestamp>` to bypass any caching
 - [ ] need to study client hmr code more for more advanced stuff
-
-```js
-
-/** @deprecated use HotPayload */
-export type HMRPayload = HotPayload
-export type HotPayload =
-  | ConnectedPayload
-  | PingPayload
-  | UpdatePayload
-  | FullReloadPayload
-  | CustomPayload
-  | ErrorPayload
-  | PrunePayload
-
-export interface ConnectedPayload {
-  type: 'connected'
-}
-
-export interface PingPayload {
-  type: 'ping'
-}
-
-export interface UpdatePayload {
-  type: 'update'
-  updates: Update[]
-}
-
-export interface Update {
-  type: 'js-update' | 'css-update'
-  /**
-   * URL of HMR patch chunk
-   *
-   * This only exists when full-bundle mode is enabled.
-   */
-  url?: string
-  path: string
-  acceptedPath: string
-  timestamp: number
-  /** @internal */
-  explicitImportRequired?: boolean
-  /** @internal */
-  isWithinCircularImport?: boolean
-  /** @internal */
-  firstInvalidatedBy?: string
-  /** @internal */
-  invalidates?: string[]
-}
-
-export interface PrunePayload {
-  type: 'prune'
-  paths: string[]
-}
-
-export interface FullReloadPayload {
-  type: 'full-reload'
-  path?: string
-  /** @internal */
-  triggeredBy?: string
-}
-
-export interface CustomPayload {
-  type: 'custom'
-  event: string
-  data?: any
-}
-
-export interface ErrorPayload {
-  type: 'error'
-  err: {
-    [name: string]: any
-    message: string
-    stack: string
-    id?: string
-    frame?: string
-    plugin?: string
-    pluginCode?: string
-    loc?: {
-      file?: string
-      line: number
-      column: number
-    }
-  }
-}
-```
